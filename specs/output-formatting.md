@@ -165,6 +165,22 @@ For list commands:
 
 Exit codes `5`–`69` and `71`–`129` are reserved for future use; commands MUST NOT emit codes outside the table above.
 
+### Central error handling
+
+Errors are handled in exactly one place, following the idiomatic cobra pattern (as used by `gh`):
+
+- **Commands never print errors or call `os.Exit`.** Each command's `RunE` returns an `error`. Validation failures, API errors, and network errors all bubble up as returned errors.
+- **The root command sets `SilenceErrors` and `SilenceUsage`** so cobra does not print anything itself; all rendering and exit happens in the central handler.
+- **A single handler** (invoked once after `rootCmd.Execute()`) inspects the returned error with `errors.As` / `errors.Is` and maps it to an exit code and a rendered error envelope:
+  - `*client.APIError` and the client sentinels (see [http-client.md](http-client.md)) → the status-based codes (`1`, `4`) and `source: justifi_api`.
+  - A command-layer `FlagError` (wraps usage/flag/argument problems) → exit `2`, `source: cli_usage`, and the handler prints the command's usage string. `FlagError` is the one error type that triggers usage output; no other error does.
+  - Credential/config problems → exit `2`, `source: cli_config`.
+  - Network/transport and timeout → exit `3`, `source: cli_network`.
+  - Anything unrecognized → exit `70`, `source: cli_internal`, message redacted to a generic "internal error" unless `--verbose` (then the stack trace is shown).
+- **One `Exit(code int)` chokepoint** is the only place that calls `os.Exit`. It is a package-level variable (defaults to `os.Exit`) so tests can swap it and assert the chosen code without terminating the test process. The central handler routes every exit through it.
+
+This keeps exit-code and envelope logic in a single testable unit and keeps every command free of error-printing boilerplate.
+
 ### Output configuration for AI tools
 
 When invoked by an AI agent, the CLI should be 100% non-interactive and machine-parseable:
