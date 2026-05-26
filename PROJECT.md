@@ -18,9 +18,9 @@
 - **Interfaces are defined by the consumer.** The package that uses a dependency declares the narrow interface it needs (only the methods it calls). Provider packages return concrete types.
 - **Dependency injection over globals.** Pass dependencies explicitly rather than importing singletons.
 
-### Mocks
+### Mocks and seams
 
-- **Generate mocks with gomock. Never handwrite a mock.**
-- **The mock lives next to the consumer's interface** and is generated from it, so it cannot drift.
+- **HTTP/API clients are concrete, with no interface.** Fake them at the `http.RoundTripper` transport seam — inject a `*http.Client` with a stub transport (or an `httptest.Server`) and run the real client. This is how both client and command-orchestration tests work.
+- **gomock + consumer-defined interfaces are only for non-HTTP behavioral seams** (interactive prompts, persistent config, OS actions). When one exists: the consumer declares the interface, and the mock is generated next to it with gomock — never handwritten.
 - **Never write a test that tests a mock.** Asserting a mock returns what it was told to return verifies nothing, and no mock-vs-real contract test is needed (generated mocks can't drift).
 - A real implementation is tested directly (e.g. the HTTP client against `httptest.Server`), never via its own mock.

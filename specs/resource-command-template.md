@@ -169,7 +169,7 @@ Most JustiFi endpoints require a sub-account. Each resource spec must state, in 
 
 This is a thin command layer; testing follows the policy in [foundation.md](foundation.md#test-layering):
 - **Validation and orchestration are tested directly** — the resource-specific branching that can actually be wrong (mutual exclusions, required-flag/sub-account errors, enum validation, file upload/download). Where this logic can be a pure function, it is tested as one with no client involved.
-- **A consumer-defined gomock mock is used only** when a test needs a canned client response to drive orchestration (e.g. the document two-step upload, `reports --download`). The consuming command package declares the narrow interface it needs and generates the mock beside it; the mock is never asserted against the real client.
+- **Orchestration tests fake the HTTP transport**, not a client interface. When a test needs a canned client response (e.g. the document two-step upload, `reports --download`), it runs the real command against the concrete client wired to a stub `http.RoundTripper` (or an `httptest.Server`). The client is never given an interface or a mock.
 - **Passthrough verbs are not unit-tested** — list/get/create that only call the client and render carry no logic to test. They are covered by the sandbox smoke suite.
 - **Output and config are tested in their own packages**, never re-tested per command.
 

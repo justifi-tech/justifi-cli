@@ -37,7 +37,7 @@ How the CLI talks to the JustiFi REST API. The CLI uses its own HTTP client buil
 
 ### The client
 
-`internal/client` exposes a **concrete** client built on the Go standard library (`net/http`). It returns concrete types — it does not define interfaces for its consumers to depend on. Following Go convention, the narrow interfaces used for testing are declared by the consumer (the command layer), not here (see "Testing").
+`internal/client` exposes a **concrete** client built on the Go standard library (`net/http`). It returns concrete types and defines no interface — neither here nor for consumers to depend on. The testing seam is the `*http.Client` transport (see "Testing"), so no client interface is needed anywhere. The client grows one method per resource as resources are added; there is no parallel interface that could fall out of sync.
 
 The client mirrors the JustiFi resource taxonomy: one accessor per resource group, each returning a concrete per-resource service. Conceptually:
 
@@ -163,8 +163,11 @@ Commands return these errors from `RunE`; the root command's error handler maps 
 
 ### Testing
 
+The client is concrete and exposes no interface; faking happens at the **HTTP transport seam**, not via a client interface. The constructor accepts a `*http.Client`, so a test injects one whose `Transport` is a stub `http.RoundTripper` (or points it at an `httptest.Server`).
+
 - The client is tested **directly** against an `httptest.Server` — a real request/response round-trip — exercising retry behavior, idempotency-key injection, sub-account-header injection, pagination, and every error-translation branch. This is where the bulk of the app's testable logic lives. Runs under `make test` (no live network).
-- The client is **not** mocked to test itself. Consumers that need to fake it (the few command tests with real branching) declare their own narrow interface and generate a gomock mock beside that interface — see [resource-command-template.md](resource-command-template.md). gomock-generated mocks cannot drift, so no mock-vs-real contract test exists or is needed.
+- The few command tests with real orchestration (e.g. the document two-step upload, `reports --download`) use the **same transport seam**: run the real command against the real client wired to a stub transport that returns canned responses. No client interface, no client mock.
+- gomock + consumer-defined interfaces are reserved for genuine **non-HTTP behavioral seams** (interactive prompts, persistent config, OS actions). The CLI has none of those in v1 (it is non-interactive and config is minimal), so v1 ships no client mock.
 
 ## Notes
 
