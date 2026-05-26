@@ -35,36 +35,33 @@ How the CLI talks to the JustiFi REST API. The CLI uses its own HTTP client buil
 
 ## Specification
 
-### The `Client` abstraction
+### The client
 
-The CLI exposes a single API client abstraction. All command code consumes it. The interface mirrors the JustiFi resource taxonomy: one accessor per resource group, each returning a typed sub-client. Conceptually:
+`internal/client` exposes a **concrete** client built on the Go standard library (`net/http`). It returns concrete types — it does not define interfaces for its consumers to depend on. Following Go convention, the narrow interfaces used for testing are declared by the consumer (the command layer), not here (see "Testing").
+
+The client mirrors the JustiFi resource taxonomy: one accessor per resource group, each returning a concrete per-resource service. Conceptually:
 
 ```go
-type Client interface {
-    Payments()       PaymentsClient
-    Refunds()        RefundsClient
-    Payouts()        PayoutsClient
-    PaymentMethods() PaymentMethodsClient
-    // ... one accessor per JustiFi resource group ...
+type Client struct { /* ... */ }
 
-    SubAccount() string
-    WithSubAccount(id string) Client
-}
+func (c *Client) Payments() *PaymentsService { /* ... */ }
+func (c *Client) Refunds()  *RefundsService  { /* ... */ }
+// ... one accessor per JustiFi resource group ...
+
+func (c *Client) SubAccount() string                { /* ... */ }
+func (c *Client) WithSubAccount(id string) *Client  { /* ... */ }
 ```
 
-Each sub-client interface declares the verbs supported for its resource. Per-resource specs name the verbs; this spec defines the shape:
+Each per-resource service exposes the verbs for its resource. Per-resource specs name the verbs; this spec defines the method shape:
 
 ```go
-type PaymentsClient interface {
-    List(ctx context.Context, params ListPaymentsParams) (*PaymentList, error)
-    Get(ctx context.Context, id string) (*Payment, error)
-    Create(ctx context.Context, body CreatePaymentRequest, opts ...RequestOption) (*Payment, error)
-    // ...
-}
+func (s *PaymentsService) List(ctx context.Context, params justifiapi.ListPaymentsParams) (*justifiapi.PaymentList, error)
+func (s *PaymentsService) Get(ctx context.Context, id string) (*justifiapi.Payment, error)
+func (s *PaymentsService) Create(ctx context.Context, body justifiapi.CreatePaymentRequest, opts ...RequestOption) (*justifiapi.Payment, error)
 ```
 
 **Contract rules:**
-- Request/response types come from the generated `justifiapi` types (see [api-sync.md](api-sync.md)). The client layer never declares parallel types for shapes that already exist in the OpenAPI spec.
+- Request/response types come from the generated `justifiapi` types (see [api-sync.md](api-sync.md)). The client never declares parallel types for shapes that already exist in the OpenAPI spec.
 - Every method takes `context.Context` first.
 - Every mutating method takes `opts ...RequestOption` last. Defined options:
   - `WithIdempotencyKey(key string)` — sets the `Idempotency-Key` header for this call.
@@ -73,7 +70,7 @@ type PaymentsClient interface {
 
 ### HTTP implementation
 
-A single concrete implementation of `Client` issues requests with the Go standard library (`net/http`). Required behaviors:
+The client issues requests with the Go standard library (`net/http`). Required behaviors:
 
 - One client instance per process, safe for concurrent use.
 - Base URL comes from the resolved `api_base` (see [config-and-auth.md](config-and-auth.md)).
@@ -82,8 +79,6 @@ A single concrete implementation of `Client` issues requests with the Go standar
 - A `User-Agent` identifying the CLI and its version is sent on every request.
 - The `Sub-Account` header is attached when a sub-account is resolved (client-level or per-call override).
 - Request construction, retry, and logging are layered so that each concern is independently testable.
-
-There is no fallback to an external SDK and no per-method shim mechanism — the whole transport is owned here, so there is nothing to shim around.
 
 ### Retries
 
@@ -168,9 +163,8 @@ Commands return these errors from `RunE`; the root command's error handler maps 
 
 ### Testing
 
-- The `Client` interface (and its sub-clients) ships a generated mock used by every command's unit tests.
-- The concrete HTTP implementation has integration tests against `httptest.Server` exercising retry, idempotency, sub-account header injection, and error translation. These run under `make test` (no live network).
-- A contract test verifies that the mock and the real implementation present the same typed surface for success and each error sentinel.
+- The client is tested **directly** against an `httptest.Server` — a real request/response round-trip — exercising retry behavior, idempotency-key injection, sub-account-header injection, pagination, and every error-translation branch. This is where the bulk of the app's testable logic lives. Runs under `make test` (no live network).
+- The client is **not** mocked to test itself. Consumers that need to fake it (the few command tests with real branching) declare their own narrow interface and generate a gomock mock beside that interface — see [resource-command-template.md](resource-command-template.md). gomock-generated mocks cannot drift, so no mock-vs-real contract test exists or is needed.
 
 ## Notes
 

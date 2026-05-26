@@ -165,19 +165,27 @@ Most JustiFi endpoints require a sub-account. Each resource spec must state, in 
 - Errors fast with exit `2` if a resource requires a sub-account and none is resolved.
 - Sends the header when one is resolved, regardless of whether the endpoint uses it (JustiFi will ignore extraneous headers).
 
+### Testing
+
+This is a thin command layer; testing follows the policy in [foundation.md](foundation.md#test-layering):
+- **Validation and orchestration are tested directly** — the resource-specific branching that can actually be wrong (mutual exclusions, required-flag/sub-account errors, enum validation, file upload/download). Where this logic can be a pure function, it is tested as one with no client involved.
+- **A consumer-defined gomock mock is used only** when a test needs a canned client response to drive orchestration (e.g. the document two-step upload, `reports --download`). The consuming command package declares the narrow interface it needs and generates the mock beside it; the mock is never asserted against the real client.
+- **Passthrough verbs are not unit-tested** — list/get/create that only call the client and render carry no logic to test. They are covered by the sandbox smoke suite.
+- **Output and config are tested in their own packages**, never re-tested per command.
+
 ### Adding a new resource — checklist
 
 Authoring a new resource spec is a small, scriptable job once this template is in hand. Each resource spec must include:
 
 1. **Overview** — one paragraph: what the resource is, which JustiFi tag it maps to, sub-account scoping behavior.
 2. **Endpoints** — table of `(verb, HTTP method, path, operationId)`.
-3. **Verbs supported** — list with one-line purpose each. If a verb is unsupported (e.g. `delete` for `payments`), state why.
+3. **Verbs supported** — list with one-line purpose each.
 4. **Resource-specific flags** — table per verb, only the flags not in the global/common sets.
 5. **Table columns** — for `list` and `get`, name the columns shown.
 6. **Special behavior** — anything not covered by this template (long-running operations, file output, etc.).
 7. **References** — link to JustiFi API docs page for this resource.
 
-Resource specs should fit on two pages. If a resource spec exceeds two pages, either the resource is genuinely complex (e.g. `entities` with its sub-resources, `onboarding` with multiple sessions) or the template needs an update.
+Resource specs should fit on two pages. If a resource spec exceeds two pages, the resource is genuinely complex (e.g. `entities` with its sub-resources) or the template needs an update.
 
 ## Notes
 

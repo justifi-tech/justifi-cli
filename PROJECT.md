@@ -2,9 +2,10 @@
 
 ## Build & Test
 
-<!-- Customize: add your project's build and test commands here -->
-- Run the project's test suite to catch errors
-- Validate with the full test suite, not just unit tests. If integration tests fail, that's a real failure — do not dismiss them.
+- `make test` runs unit tests; `make test-all` adds the sandbox smoke suite. Validate with the full suite — if a sandbox/integration test fails, that's a real failure, never dismissed.
+- This is a thin CLI: most commands parse flags, make one API call, and render. **Test where the logic is, not in every command.** Concentrate tests on `internal/client` (against `httptest.Server`), `internal/output`, and the api-sync scripts. In the command layer, test only resource-specific validation/orchestration. Keep `internal/config` tests minimal (resolution-order precedence and token-cache validity only) — excessive config testing is unwanted.
+- **Do not test passthrough.** A mock-based test of a list/get/create that just calls the client and renders verifies only the plumbing and breaks on refactors. Cover passthrough with the sandbox smoke suite instead.
+- Shared tools (`internal/output`, `internal/config`) are tested once in their own package; commands never re-test formatting or config.
 
 ## Conventions
 
@@ -14,6 +15,12 @@
 
 ### Interfaces and Dependencies
 
-- **Use interfaces for external dependencies.** Database access, HTTP clients, external services — anything that crosses a boundary.
-- **Mock at boundaries, not internals.** Mock the interface, not implementation details.
+- **Interfaces are defined by the consumer.** The package that uses a dependency declares the narrow interface it needs (only the methods it calls). Provider packages return concrete types.
 - **Dependency injection over globals.** Pass dependencies explicitly rather than importing singletons.
+
+### Mocks
+
+- **Generate mocks with gomock. Never handwrite a mock.**
+- **The mock lives next to the consumer's interface** and is generated from it, so it cannot drift.
+- **Never write a test that tests a mock.** Asserting a mock returns what it was told to return verifies nothing, and no mock-vs-real contract test is needed (generated mocks can't drift).
+- A real implementation is tested directly (e.g. the HTTP client against `httptest.Server`), never via its own mock.
